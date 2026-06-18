@@ -63,13 +63,18 @@ def clean_int(value_str):
 def parse_date_list(html_content):
     """店舗データ一覧ページから日付リンクと日付のリストを取得します。"""
     soup = BeautifulSoup(html_content, 'html.parser')
+
+    # 次のページURLの取得
+    next_page_tag = soup.find('a', class_='next')
+    next_page_url = next_page_tag.get('href') if next_page_tag else None
+
     date_table = soup.find('div', class_='date-table')
     if not date_table:
         date_table = soup.find('table', id='table')
         
     if not date_table:
         print("Date table not found on list page.")
-        return []
+        return [], next_page_url
         
     date_links = []
     # 各行を走査
@@ -95,7 +100,7 @@ def parse_date_list(html_content):
                 'url': href
             })
             
-    return date_links
+    return date_links, next_page_url
 
 def parse_detail_page(html_content):
     """詳細ページからサマリー情報と台別詳細情報をパースします。"""
@@ -177,7 +182,9 @@ def parse_detail_page(html_content):
         '差枚': 'difference',
         'BB': 'bb_count',
         'RB': 'rb_count',
-        '合成確率': 'composite_probability'
+        '合成確率': 'composite_probability',
+        'BB確率': 'bb_probability',
+        'RB確率': 'rb_probability'
     }
     
     index_map = {}
@@ -228,6 +235,14 @@ def parse_detail_page(html_content):
         if 'composite_probability' in index_map:
             composite_probability = cells[index_map['composite_probability']]
             
+        bb_probability = None
+        if 'bb_probability' in index_map:
+            bb_probability = cells[index_map['bb_probability']]
+
+        rb_probability = None
+        if 'rb_probability' in index_map:
+            rb_probability = cells[index_map['rb_probability']]
+
         units_data.append({
             'machine_name': machine_name,
             'unit_number': unit_num_str,
@@ -236,7 +251,9 @@ def parse_detail_page(html_content):
             'difference': difference,
             'bb_count': bb_count,
             'rb_count': rb_count,
-            'composite_probability': composite_probability
+            'composite_probability': composite_probability,
+            'bb_probability': bb_probability,
+            'rb_probability': rb_probability
         })
         
     return summary_data, units_data
@@ -254,52 +271,78 @@ def crawl_page(hall_id, url):
     return True
 
 def crawl_latest(hall_id, name, pref, list_url):
-    """最新の未登録データをクローリングします。"""
+    """最新の未登録データをクローリングします（ページネーション対応）。"""
     print(f"Crawl latest started for {name}")
-    html_list = fetch_html(list_url)
-    if not html_list:
-        print("Failed to fetch list page.")
-        return
+
+    current_url = list_url
+    all_new_dates = []
+
+    # 未登録の日付が見つかる限り、またはページがなくなるまでリストを辿る
+    while current_url:
+        html_list = fetch_html(current_url)
+        if not html_list:
+            break
+
+        date_links, next_page_url = parse_date_list(html_list)
         
-    date_links = parse_date_list(html_list)
-    print(f"Found {len(date_links)} dates on list page.")
+        page_has_new_date = False
+        for item in date_links:
+            if not db.is_date_registered(hall_id, item['date']):
+                all_new_dates.append(item)
+                page_has_new_date = True
+
+        # このページに未登録が1つもなければ、それ以上遡る必要はないと判断（最新順のため）
+        if not page_has_new_date and all_new_dates:
+            break
+
+        current_url = next_page_url
+        if current_url:
+            time.sleep(random.uniform(1, 2))
+
+    print(f"Found {len(all_new_dates)} new dates to register.")
     
     # 古い日付から順に登録するために、逆順で処理
     registered_count = 0
-    for item in reversed(date_links):
+    for item in reversed(all_new_dates):
         date_str = item['date']
         url = item['url']
         
-        # 登録チェック
-        if db.is_date_registered(hall_id, date_str):
-            # すでに登録済みならスキップ
-            continue
-            
-        print(f"New date found: {date_str}. Starting crawling...")
+        print(f"Crawling: {date_str}...")
         try:
             success = crawl_page(hall_id, url)
             if success:
                 registered_count += 1
-            # サーバーに負荷をかけないようウェイト
             time.sleep(random.uniform(3, 5))
         except Exception as e:
             print(f"Failed to crawl {date_str}: {e}")
-            # エラーが発生しても処理を終了させず、次の日付または別の店舗に進む
             
     print(f"Crawl latest completed for {name}. Registered {registered_count} new dates.")
 
 def crawl_backfill(hall_id, name, pref, list_url, days):
-    """過去の営業日数（days）分のデータを遡って一括収集します。"""
+    """過去の営業日数（days）分のデータを遡って一括収集します（ページネーション対応）。"""
     print(f"Crawl backfill started for {name} (Limit: {days} days)")
-    html_list = fetch_html(list_url)
-    if not html_list:
-        return
+
+    current_url = list_url
+    all_target_links = []
+
+    while current_url and len(all_target_links) < days:
+        html_list = fetch_html(current_url)
+        if not html_list:
+            break
+
+        date_links, next_page_url = parse_date_list(html_list)
+        all_target_links.extend(date_links)
         
-    date_links = parse_date_list(html_list)
+        if len(all_target_links) >= days:
+            break
+
+        current_url = next_page_url
+        if current_url:
+            time.sleep(random.uniform(1, 2))
     
-    # 新しい日付順になっているので、指定件数分を取得
-    target_links = date_links[:days]
-    print(f"Backfill targets: {len(target_links)} dates")
+    # 指定件数分に切り出し
+    target_links = all_target_links[:days]
+    print(f"Backfill targets: {len(target_links)} dates found across pages.")
     
     registered_count = 0
     # 古いものから順にインポートするため、逆順にする
@@ -330,7 +373,7 @@ def crawl_refresh(hall_id, name, pref, list_url, date_str):
     if not html_list:
         return
         
-    date_links = parse_date_list(html_list)
+    date_links, _ = parse_date_list(html_list)
     target_url = None
     for item in date_links:
         if item['date'] == date_str:

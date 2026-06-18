@@ -92,9 +92,22 @@ def init_db():
         bb_count INTEGER NOT NULL,
         rb_count INTEGER NOT NULL,
         composite_probability TEXT,
+        bb_probability TEXT,
+        rb_probability TEXT,
         FOREIGN KEY (summary_id) REFERENCES daily_summaries (id)
     )
     ''')
+
+    # カラムの追加（既存DB移行用）
+    try:
+        cursor.execute('ALTER TABLE unit_details ADD COLUMN bb_probability TEXT')
+    except sqlite3.OperationalError:
+        pass  # 既に存在する場合
+
+    try:
+        cursor.execute('ALTER TABLE unit_details ADD COLUMN rb_probability TEXT')
+    except sqlite3.OperationalError:
+        pass  # 既に存在する場合
     
     # インデックス作成
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_summaries_date ON daily_summaries (date)')
@@ -190,13 +203,15 @@ def save_daily_data(hall_id, summary_data, units_data):
                 unit['difference'],
                 unit['bb_count'],
                 unit['rb_count'],
-                unit.get('composite_probability')
+                unit.get('composite_probability'),
+                unit.get('bb_probability'),
+                unit.get('rb_probability')
             ))
             
         cursor.executemany('''
         INSERT INTO unit_details (
-            summary_id, machine_name, unit_number, unit_number_tail, games, difference, bb_count, rb_count, composite_probability
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            summary_id, machine_name, unit_number, unit_number_tail, games, difference, bb_count, rb_count, composite_probability, bb_probability, rb_probability
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', insert_data)
         
         conn.commit()
