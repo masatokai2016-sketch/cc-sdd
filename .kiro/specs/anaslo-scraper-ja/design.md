@@ -76,6 +76,8 @@ erDiagram
         INTEGER bb_count
         INTEGER rb_count
         TEXT composite_probability
+        TEXT bb_probability
+        TEXT rb_probability
     }
 ```
 

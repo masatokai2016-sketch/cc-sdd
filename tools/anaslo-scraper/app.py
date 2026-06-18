@@ -54,7 +54,7 @@ def load_daily_summaries(hall_id, start_date, end_date):
 def load_unit_details(hall_id, start_date, end_date):
     conn = db.get_connection()
     query = """
-        SELECT ud.machine_name, ud.unit_number, ud.unit_number_tail, ud.games, ud.difference, ud.bb_count, ud.rb_count, ud.composite_probability, ds.date, ds.day_of_week
+        SELECT ud.machine_name, ud.unit_number, ud.unit_number_tail, ud.games, ud.difference, ud.bb_count, ud.rb_count, ud.composite_probability, ud.bb_probability, ud.rb_probability, ds.date, ds.day_of_week
         FROM unit_details ud
         JOIN daily_summaries ds ON ud.summary_id = ds.id
         WHERE ds.hall_id = ? AND ds.date BETWEEN ? AND ?
@@ -267,9 +267,9 @@ with tab1:
     def classify_event_day(date_str):
         day = int(date_str.split("-")[-1])
         month = int(date_str.split("-")[1])
-        # 5のつく日
-        if day in [5, 15, 25]:
-            return "5のつく日"
+        # 7のつく日
+        if day in [7, 17, 27]:
+            return "7のつく日"
         # ゾロ目の日
         elif day in [11, 22] or month == day:
             return "ゾロ目の日"
@@ -292,7 +292,7 @@ with tab1:
         ).reset_index()
         
     chart_event = alt.Chart(event_summary).mark_bar().encode(
-        x=alt.X('event_class:N', sort=["通常日", "5のつく日", "ゾロ目の日"], title="営業区分"),
+        x=alt.X('event_class:N', sort=["通常日", "7のつく日", "ゾロ目の日"], title="営業区分"),
         y=alt.Y('avg_diff:Q', title="平均差枚"),
         color=alt.Color('event_class:N', legend=None),
         tooltip=['event_class', 'avg_diff']
@@ -382,6 +382,23 @@ with tab3:
         'win_rate': '勝率 (%)',
         'total_units': '総稼働台数'
     })
+
+    if analysis_target == "特定機種に絞る":
+        st.write("#### 詳細データ一覧")
+        st.dataframe(
+            units_df[["date", "unit_number", "games", "difference", "bb_count", "rb_count", "composite_probability", "bb_probability", "rb_probability"]].rename(columns={
+                "date": "日付",
+                "unit_number": "台番号",
+                "games": "G数",
+                "difference": "差枚",
+                "bb_count": "BB",
+                "rb_count": "RB",
+                "composite_probability": "合成",
+                "bb_probability": "BB確率",
+                "rb_probability": "RB確率"
+            }),
+            use_container_width=True
+        )
     
     st.dataframe(
         ranking_display_df.style.format({

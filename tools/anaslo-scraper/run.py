@@ -107,6 +107,7 @@ def run_refresh(date_str):
 def run_dashboard():
     """Streamlitダッシュボードを起動します。"""
     logger.info("Launching analysis dashboard...")
+    db.backup_database()  # 起動前にバックアップを実行
     app_path = os.path.join(BASE_DIR, 'app.py')
     
     # 仮想環境やWindowsの環境依存を避けるため、sys.executable (現在動いているPython) の -m streamlit を使用

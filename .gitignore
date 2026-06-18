@@ -91,3 +91,8 @@ docs/kiro/
 
 # Local dev tooling (not part of the project)
 .entire/
+
+# Database files
+*.db
+tools/anaslo-scraper/backup/
+tools/anaslo-scraper/logs/*.log
