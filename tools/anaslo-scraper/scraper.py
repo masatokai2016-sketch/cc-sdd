@@ -292,7 +292,7 @@ def crawl_latest(hall_id, name, pref, list_url):
                 page_has_new_date = True
 
         # このページに未登録が1つもなければ、それ以上遡る必要はないと判断（最新順のため）
-        if not page_has_new_date and all_new_dates:
+        if not page_has_new_date:
             break
 
         current_url = next_page_url
